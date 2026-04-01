@@ -1,0 +1,2 @@
+[console_scripts]
+server = openenv_farm.server.app:main

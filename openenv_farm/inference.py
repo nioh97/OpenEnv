@@ -1,7 +1,10 @@
 """
 Baseline agent: OpenAI chat with JSON actions + heuristic fallback.
 
-Env: OPENAI_API_KEY, API_BASE_URL (optional), MODEL_NAME (optional).
+Authentication (first non-empty wins): ``OPENAI_API_KEY``, then ``HF_TOKEN``
+(for Hugging Face Inference / OpenAI-compatible endpoints).
+
+Optional: ``API_BASE_URL`` (custom base URL), ``MODEL_NAME`` (default ``gpt-4o-mini``).
 """
 
 from __future__ import annotations
@@ -40,7 +43,10 @@ Choose actions to grow the crop and harvest when mature. Be concise."""
 
 
 def _client() -> OpenAI | None:
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    key = (
+        os.environ.get("OPENAI_API_KEY", "").strip()
+        or os.environ.get("HF_TOKEN", "").strip()
+    )
     if not key:
         return None
     base = os.environ.get("API_BASE_URL", "").strip() or None
@@ -119,7 +125,7 @@ def _llm_action(client: OpenAI, model: str, obs: Observation) -> Action | None:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user},
             ],
-            temperature=0.2,
+            temperature=0.0,
             max_tokens=256,
             response_format={"type": "json_object"},
         )

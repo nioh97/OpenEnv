@@ -1,0 +1,32 @@
+[project]
+name = "openenv-farm"
+version = "0.1.0"
+description = "Smart Farming OpenEnv environment"
+authors = [{ name = "Akif Khan" }]
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+    "fastapi",
+    "uvicorn",
+    "openenv-core>=0.2.0"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"openenv_farm" = "."
+
+[tool.setuptools]
+packages = [
+    "openenv_farm",
+    "openenv_farm.api",
+    "openenv_farm.env",
+    "openenv_farm.graders",
+    "openenv_farm.server",
+    "openenv_farm.tasks",
+]
+
+[project.scripts]
+server = "openenv_farm.server.app:main"

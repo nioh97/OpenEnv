@@ -22,7 +22,11 @@ TASK_MODULES: dict[str, Any] = {
 env = FarmEnv()
 current_task: str = "easy"
 
-app = FastAPI(title="Smart Farm OpenEnv", version="1.0.0")
+app = FastAPI(
+    title="Smart Farm OpenEnv",
+    version="1.0.0",
+    root_path="/proxy/7860",
+)
 
 
 def _task_conds(name: str) -> dict[str, Any]:
@@ -32,23 +36,22 @@ def _task_conds(name: str) -> dict[str, Any]:
     return mod.get_initial_conditions()
 
 
-@app.get("/reset")
-def reset_episode(
-    task: str = Query("easy", description="easy | medium | hard"),
-    seed: int | None = Query(None, description="RNG seed; default 42"),
-) -> dict[str, Any]:
-    global current_task
-    if task not in TASK_MODULES:
+def get_task_config(task: str) -> dict[str, Any]:
+    mod = TASK_MODULES.get(task)
+    if mod is None:
         raise HTTPException(status_code=400, detail=f"Invalid task: {task}")
+    return mod.get_initial_conditions()
+
+
+def handle_reset(task: str, seed: int | None) -> dict[str, Any]:
+    global current_task
     current_task = task
     s = 42 if seed is None else int(seed)
-    conds = TASK_MODULES[task].get_initial_conditions()
-    obs = env.reset(seed=s, task_config=conds)
+    obs = env.reset(seed=s, task_config=get_task_config(task))
     return {"observation": obs.model_dump(), "task": current_task, "seed": s}
 
 
-@app.post("/step")
-def step_episode(action: Action) -> dict[str, Any]:
+def handle_step(action: Action) -> dict[str, Any]:
     if env.done:
         raise HTTPException(status_code=400, detail="Episode finished; call /reset first")
     obs, rew, done, info = env.step(action)
@@ -60,21 +63,7 @@ def step_episode(action: Action) -> dict[str, Any]:
     }
 
 
-@app.get("/state")
-def get_state() -> dict[str, Any]:
-    return env.state()
-
-
-@app.get("/tasks")
-def list_tasks() -> dict[str, Any]:
-    return {
-        "tasks": ["easy", "medium", "hard"],
-        "action_schema": Action.model_json_schema(),
-    }
-
-
-@app.get("/grader")
-def run_grader() -> dict[str, Any]:
+def compute_grader() -> dict[str, Any]:
     hist = env.history
     conds = _task_conds(current_task)
     y = grade_yield(hist, task_name=current_task)
@@ -93,13 +82,85 @@ def run_grader() -> dict[str, Any]:
     }
 
 
-@app.get("/baseline")
-async def baseline() -> dict[str, Any]:
-    """Runs baseline inference off the event loop (may take several minutes)."""
+async def run_baseline_async() -> dict[str, Any]:
     from openenv_farm.inference import run_baseline
 
     try:
-        result = await asyncio.to_thread(run_baseline)
+        return await asyncio.to_thread(run_baseline)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-    return result
+
+
+@app.get("/")
+def root() -> dict[str, Any]:
+    return {"message": "Smart Farm OpenEnv API running"}
+
+
+@app.get("/reset")
+def reset_episode(
+    task: str = Query("easy", description="easy | medium | hard"),
+    seed: int | None = Query(None, description="RNG seed; default 42"),
+) -> dict[str, Any]:
+    return handle_reset(task, seed)
+
+
+@app.get("/reset/")
+def reset_episode_slash(
+    task: str = Query("easy", description="easy | medium | hard"),
+    seed: int | None = Query(None, description="RNG seed; default 42"),
+) -> dict[str, Any]:
+    return handle_reset(task, seed)
+
+
+@app.post("/step")
+def step_episode(action: Action) -> dict[str, Any]:
+    return handle_step(action)
+
+
+@app.post("/step/")
+def step_episode_slash(action: Action) -> dict[str, Any]:
+    return handle_step(action)
+
+
+@app.get("/state")
+def get_state() -> dict[str, Any]:
+    return env.state()
+
+
+@app.get("/state/")
+def get_state_slash() -> dict[str, Any]:
+    return env.state()
+
+
+@app.get("/tasks")
+def list_tasks() -> dict[str, Any]:
+    return {
+        "tasks": ["easy", "medium", "hard"],
+        "action_schema": Action.model_json_schema(),
+    }
+
+
+@app.get("/tasks/")
+def list_tasks_slash() -> dict[str, Any]:
+    return list_tasks()
+
+
+@app.get("/grader")
+def run_grader() -> dict[str, Any]:
+    return compute_grader()
+
+
+@app.get("/grader/")
+def run_grader_slash() -> dict[str, Any]:
+    return compute_grader()
+
+
+@app.get("/baseline")
+async def baseline() -> dict[str, Any]:
+    """Runs baseline inference off the event loop (may take several minutes)."""
+    return await run_baseline_async()
+
+
+@app.get("/baseline/")
+async def baseline_slash() -> dict[str, Any]:
+    return await run_baseline_async()
