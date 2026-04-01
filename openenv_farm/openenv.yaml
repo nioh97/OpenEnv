@@ -1,0 +1,8 @@
+name: smart-farm-env
+version: 1.0
+description: AI farming decision simulation
+entrypoint: api/server.py
+tasks:
+  - easy
+  - medium
+  - hard

@@ -30,7 +30,7 @@ class FarmEnv:
         self._last_stress_index: float = 0.0
         self._last_weather: dict[str, float] = {"temperature": 0.0, "rainfall": 0.0}
 
-    def reset(self, seed: int = 42) -> Observation:
+    def reset(self, seed: int = 42, task_config: dict[str, Any] | None = None) -> Observation:
         self._seed = int(seed)
         self.current_day = 0
         self.soil_moisture = float(config.INITIAL_SOIL_MOISTURE)
@@ -46,7 +46,22 @@ class FarmEnv:
         self.history = []
         self._last_stress_index = 0.0
         self._last_weather = {"temperature": 0.0, "rainfall": 0.0}
+        if task_config:
+            self._apply_task_config(task_config)
         return self._build_observation()
+
+    def _apply_task_config(self, conds: dict[str, Any]) -> None:
+        """Override initial resources from a task definition (OpenEnv / API integration)."""
+        self.soil_moisture = float(conds["soil_moisture"])
+        sn = conds["soil_nutrients"]
+        self.soil_nutrients = {
+            "N": float(sn["N"]),
+            "P": float(sn["P"]),
+            "K": float(sn["K"]),
+        }
+        self.pest_level = float(conds["pest_level"])
+        self.water_available = float(conds["water_available"])
+        self.budget_remaining = float(conds["budget"])
 
     def state(self) -> dict[str, Any]:
         return {
