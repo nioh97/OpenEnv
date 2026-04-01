@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from openenv_farm.env.farm_env import FarmEnv
 from openenv_farm.env.models import Action
 from openenv_farm.graders.profit_grader import grade as grade_profit
@@ -97,7 +97,7 @@ def root() -> dict[str, Any]:
 
 
 @app.get("/reset")
-def reset_episode(
+def reset_get(
     task: str = Query("easy", description="easy | medium | hard"),
     seed: int | None = Query(None, description="RNG seed; default 42"),
 ) -> dict[str, Any]:
@@ -105,10 +105,26 @@ def reset_episode(
 
 
 @app.get("/reset/")
-def reset_episode_slash(
+def reset_get_slash(
     task: str = Query("easy", description="easy | medium | hard"),
     seed: int | None = Query(None, description="RNG seed; default 42"),
 ) -> dict[str, Any]:
+    return handle_reset(task, seed)
+
+
+@app.post("/reset")
+def reset_post(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    task = str(payload.get("task", "easy"))
+    raw_seed = payload.get("seed")
+    seed: int | None = None if raw_seed is None else int(raw_seed)
+    return handle_reset(task, seed)
+
+
+@app.post("/reset/")
+def reset_post_slash(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    task = str(payload.get("task", "easy"))
+    raw_seed = payload.get("seed")
+    seed: int | None = None if raw_seed is None else int(raw_seed)
     return handle_reset(task, seed)
 
 
