@@ -45,21 +45,23 @@ def _task_name_for(task_mod: Any) -> str:
 
 
 # ── Structured stdout helpers (OpenEnv Phase 2) ─────────────────────
+# These are the default implementations.  The root inference.py may
+# monkey-patch these with versions that use additional write guarantees.
 def log_start(task: str, env: str = "", model: str = "") -> None:
-    _ = (env, model)
-    print(f"[START] task={task}", file=sys.stdout, flush=True)
+    sys.stdout.write(f"[START] task={task}\n")
+    sys.stdout.flush()
 
 
 def log_step(step: int, action: str = "", reward: float = 0.0,
              done: bool = False, error: Any = None) -> None:
-    _ = (action, done, error)
-    print(f"[STEP] step={step} reward={reward}", file=sys.stdout, flush=True)
+    sys.stdout.write(f"[STEP] step={step} reward={reward}\n")
+    sys.stdout.flush()
 
 
 def log_end(task: str = "", success: bool = False, steps: int = 0,
             score: float = 0.0, rewards: list[float] | None = None) -> None:
-    _ = (success, rewards)
-    print(f"[END] task={task} score={score} steps={steps}", file=sys.stdout, flush=True)
+    sys.stdout.write(f"[END] task={task} score={score} steps={steps}\n")
+    sys.stdout.flush()
 
 
 SYSTEM_PROMPT = """You control a farm simulator. Each turn reply with ONLY a JSON object with keys:
