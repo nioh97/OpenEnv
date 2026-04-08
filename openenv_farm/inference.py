@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from typing import Any
 
 from openai import OpenAI
@@ -45,17 +46,20 @@ def _task_name_for(task_mod: Any) -> str:
 
 # ── Structured stdout helpers (OpenEnv Phase 2) ─────────────────────
 def log_start(task: str, env: str = "", model: str = "") -> None:
-    print(f"[START] task={task}", flush=True)
+    _ = (env, model)
+    print(f"[START] task={task}", file=sys.stdout, flush=True)
 
 
 def log_step(step: int, action: str = "", reward: float = 0.0,
              done: bool = False, error: Any = None) -> None:
-    print(f"[STEP] step={step} reward={reward}", flush=True)
+    _ = (action, done, error)
+    print(f"[STEP] step={step} reward={reward}", file=sys.stdout, flush=True)
 
 
 def log_end(task: str = "", success: bool = False, steps: int = 0,
             score: float = 0.0, rewards: list[float] | None = None) -> None:
-    print(f"[END] task={task} score={score} steps={steps}", flush=True)
+    _ = (success, rewards)
+    print(f"[END] task={task} score={score} steps={steps}", file=sys.stdout, flush=True)
 
 
 SYSTEM_PROMPT = """You control a farm simulator. Each turn reply with ONLY a JSON object with keys:
