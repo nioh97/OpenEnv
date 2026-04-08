@@ -141,13 +141,15 @@ def run_episode_for_task(
     *,
     seed: int = 42,
     max_steps: int | None = None,
+    task_name: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Returns (history, mode) where mode is 'openai' or 'heuristic'."""
     limit = max_steps if max_steps is not None else config.MAX_DAYS
     env = FarmEnv()
     conds = task_mod.get_initial_conditions()
     obs = env.reset(seed=seed, task_config=conds)
-    setattr(env, "_inference_task_name", _task_name_for(task_mod))
+    tname = task_name if task_name is not None else _task_name_for(task_mod)
+    setattr(env, "_inference_task_name", tname)
 
     client = _client()
     model = _model_name()
@@ -162,8 +164,9 @@ def run_episode_for_task(
                 used_openai = True
         if action is None:
             action = heuristic_action(env, step_idx, obs)
-        obs, _, _, _ = env.step(action)
+        obs, reward, _, _ = env.step(action)
         step_idx += 1
+        print(f"[STEP] step={step_idx} reward={reward.value}", flush=True)
 
     mode = "openai" if used_openai else "heuristic"
     return env.history, mode
@@ -193,9 +196,17 @@ def run_baseline() -> dict[str, Any]:
     base_seed = 42
 
     for i, (name, mod) in enumerate(TASK_ORDER):
-        hist, mode = run_episode_for_task(mod, seed=base_seed + i)
-        out[name] = float(aggregate_score(hist, name))
+        print(f"[START] task={name}", flush=True)
+        hist, mode = run_episode_for_task(
+            mod, seed=base_seed + i, task_name=name
+        )
+        final_score = float(aggregate_score(hist, name))
+        out[name] = final_score
         meta[name] = {"steps": len(hist), "mode": mode}
+        print(
+            f"[END] task={name} score={final_score} steps={len(hist)}",
+            flush=True,
+        )
 
     out["meta"] = meta
     return out
