@@ -1,10 +1,11 @@
 """
 Baseline agent: OpenAI chat with JSON actions + heuristic fallback.
 
-Authentication (first non-empty wins): ``OPENAI_API_KEY``, then ``HF_TOKEN``
-(for Hugging Face Inference / OpenAI-compatible endpoints).
-
-Optional: ``API_BASE_URL`` (custom base URL), ``MODEL_NAME`` (default ``gpt-4o-mini``).
+Environment variables (OpenEnv Phase 2):
+  ``API_BASE_URL``  – LLM endpoint      (default: https://api.openai.com/v1)
+  ``MODEL_NAME``    – model identifier   (default: gpt-4o-mini)
+  ``HF_TOKEN``      – Hugging Face token (no default)
+  ``OPENAI_API_KEY`` – OpenAI key; used before ``HF_TOKEN`` when both are set.
 """
 
 from __future__ import annotations
@@ -23,6 +24,15 @@ from openenv_farm.graders.sustainability_grader import grade as grade_sustainabi
 from openenv_farm.graders.yield_grader import grade as grade_yield
 from openenv_farm.tasks import easy, hard, medium
 
+# ── Required environment variables (OpenEnv Phase 2) ─────────────────
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("OPENAI_API_KEY", "") or HF_TOKEN or ""
+
+BENCHMARK = "openenv_farm"
+SUCCESS_SCORE_THRESHOLD = 0.5
+
 TASK_ORDER = (("easy", easy), ("medium", medium), ("hard", hard))
 
 
@@ -31,6 +41,21 @@ def _task_name_for(task_mod: Any) -> str:
         if m is task_mod:
             return n
     return "easy"
+
+
+# ── Structured stdout helpers (OpenEnv Phase 2) ─────────────────────
+def log_start(task: str, env: str = "", model: str = "") -> None:
+    print(f"[START] task={task}", flush=True)
+
+
+def log_step(step: int, action: str = "", reward: float = 0.0,
+             done: bool = False, error: Any = None) -> None:
+    print(f"[STEP] step={step} reward={reward}", flush=True)
+
+
+def log_end(task: str = "", success: bool = False, steps: int = 0,
+            score: float = 0.0, rewards: list[float] | None = None) -> None:
+    print(f"[END] task={task} score={score} steps={steps}", flush=True)
 
 
 SYSTEM_PROMPT = """You control a farm simulator. Each turn reply with ONLY a JSON object with keys:
@@ -43,21 +68,12 @@ Choose actions to grow the crop and harvest when mature. Be concise."""
 
 
 def _client() -> OpenAI | None:
-    key = (
-        os.environ.get("OPENAI_API_KEY", "").strip()
-        or os.environ.get("HF_TOKEN", "").strip()
-    )
-    if not key:
+    if not API_KEY:
         return None
-    base = os.environ.get("API_BASE_URL", "").strip() or None
-    kwargs: dict[str, Any] = {"api_key": key}
-    if base:
-        kwargs["base_url"] = base
+    kwargs: dict[str, Any] = {"api_key": API_KEY}
+    if API_BASE_URL:
+        kwargs["base_url"] = API_BASE_URL
     return OpenAI(**kwargs)
-
-
-def _model_name() -> str:
-    return os.environ.get("MODEL_NAME", "gpt-4o-mini").strip() or "gpt-4o-mini"
 
 
 def heuristic_action(env: FarmEnv, step_idx: int, obs: Observation) -> Action:
@@ -142,8 +158,8 @@ def run_episode_for_task(
     seed: int = 42,
     max_steps: int | None = None,
     task_name: str | None = None,
-) -> tuple[list[dict[str, Any]], str]:
-    """Returns (history, mode) where mode is 'openai' or 'heuristic'."""
+) -> tuple[list[dict[str, Any]], str, list[float]]:
+    """Returns (history, mode, rewards) where mode is 'openai' or 'heuristic'."""
     limit = max_steps if max_steps is not None else config.MAX_DAYS
     env = FarmEnv()
     conds = task_mod.get_initial_conditions()
@@ -152,24 +168,25 @@ def run_episode_for_task(
     setattr(env, "_inference_task_name", tname)
 
     client = _client()
-    model = _model_name()
     used_openai = False
 
     step_idx = 0
+    rewards: list[float] = []
     while not env.done and step_idx < limit:
         action: Action | None = None
         if client is not None:
-            action = _llm_action(client, model, obs)
+            action = _llm_action(client, MODEL_NAME, obs)
             if action is not None:
                 used_openai = True
         if action is None:
             action = heuristic_action(env, step_idx, obs)
-        obs, reward, _, _ = env.step(action)
+        obs, reward, done, _ = env.step(action)
         step_idx += 1
-        print(f"[STEP] step={step_idx} reward={reward.value}", flush=True)
+        rewards.append(reward.value)
+        log_step(step=step_idx, reward=reward.value, done=done)
 
     mode = "openai" if used_openai else "heuristic"
-    return env.history, mode
+    return env.history, mode, rewards
 
 
 def aggregate_score(hist: list[dict[str, Any]], task_name: str) -> float:
@@ -196,17 +213,17 @@ def run_baseline() -> dict[str, Any]:
     base_seed = 42
 
     for i, (name, mod) in enumerate(TASK_ORDER):
-        print(f"[START] task={name}", flush=True)
-        hist, mode = run_episode_for_task(
+        log_start(task=name, env=BENCHMARK, model=MODEL_NAME)
+        hist, mode, rewards = run_episode_for_task(
             mod, seed=base_seed + i, task_name=name
         )
         final_score = float(aggregate_score(hist, name))
+        final_score = min(max(final_score, 0.0), 1.0)
+        success = final_score >= SUCCESS_SCORE_THRESHOLD
         out[name] = final_score
         meta[name] = {"steps": len(hist), "mode": mode}
-        print(
-            f"[END] task={name} score={final_score} steps={len(hist)}",
-            flush=True,
-        )
+        log_end(task=name, success=success, steps=len(hist),
+                score=final_score, rewards=rewards)
 
     out["meta"] = meta
     return out
