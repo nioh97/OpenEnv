@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from typing import Any
 
 from openai import OpenAI
@@ -45,23 +44,37 @@ def _task_name_for(task_mod: Any) -> str:
 
 
 # ── Structured stdout helpers (OpenEnv Phase 2) ─────────────────────
-# These are the default implementations.  The root inference.py may
-# monkey-patch these with versions that use additional write guarantees.
+# Evaluators parse stdout for [START] / [STEP] / [END]. Always use print(..., flush=True).
+def _emit_structured(line: str) -> None:
+    print(line, flush=True)
+
+
 def log_start(task: str, env: str = "", model: str = "") -> None:
-    sys.stdout.write(f"[START] task={task}\n")
-    sys.stdout.flush()
+    _ = env, model
+    _emit_structured(f"[START] task={task}")
 
 
-def log_step(step: int, action: str = "", reward: float = 0.0,
-             done: bool = False, error: Any = None) -> None:
-    sys.stdout.write(f"[STEP] step={step} reward={reward}\n")
-    sys.stdout.flush()
+def log_step(
+    step: int,
+    action: str = "",
+    reward: float = 0.0,
+    done: bool = False,
+    error: Any = None,
+) -> None:
+    _ = action, done, error
+    _emit_structured(f"[STEP] step={step} reward={reward}")
 
 
-def log_end(task: str = "", success: bool = False, steps: int = 0,
-            score: float = 0.0, rewards: list[float] | None = None) -> None:
-    sys.stdout.write(f"[END] task={task} score={score} steps={steps}\n")
-    sys.stdout.flush()
+def log_end(
+    task: str = "",
+    success: bool = False,
+    steps: int = 0,
+    score: float = 0.0,
+    rewards: list[float] | None = None,
+) -> None:
+    # Keep line format aligned with OpenEnv evaluators: [END] task=… score=… steps=…
+    _ = success, rewards
+    _emit_structured(f"[END] task={task} score={score} steps={steps}")
 
 
 SYSTEM_PROMPT = """You control a farm simulator. Each turn reply with ONLY a JSON object with keys:
@@ -237,4 +250,4 @@ def run_baseline() -> dict[str, Any]:
 
 if __name__ == "__main__":
     out = run_baseline()
-    print(json.dumps(out, indent=2))
+    print(json.dumps(out, indent=2), flush=True)
